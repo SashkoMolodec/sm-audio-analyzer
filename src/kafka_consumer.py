@@ -20,11 +20,10 @@ class AnalysisTaskConsumer:
             group_id=config.KAFKA_CONSUMER_GROUP,
             value_deserializer=lambda m: json.loads(m.decode('utf-8')),
             auto_offset_reset='earliest',
-            enable_auto_commit=True,
-            # Збільшуємо таймаути для довгих аналізів (до 5 хвилин)
+            enable_auto_commit=False,  # Manual commit for reliability
             session_timeout_ms=300000,  # 5 minutes
             heartbeat_interval_ms=60000,  # 1 minute
-            max_poll_interval_ms=600000  # 10 minutes
+            max_poll_interval_ms=900000  # 15 minutes
         )
 
         logger.info(f"Kafka consumer initialized for topic: {config.ANALYZE_TRACK_TOPIC}")
@@ -40,8 +39,12 @@ class AnalysisTaskConsumer:
 
                 try:
                     self.message_handler(task)
+                    # Commit offset only after successful processing
+                    self.consumer.commit()
+                    logger.debug(f"Committed offset for trackId={task.get('trackId')}")
                 except Exception as e:
                     logger.error(f"Failed to process task {task.get('trackId')}: {e}", exc_info=True)
+                    # Don't commit on error - message will be reprocessed
 
         except KeyboardInterrupt:
             logger.info("Consumer interrupted by user")
