@@ -11,7 +11,7 @@ class Config:
     ANALYSIS_COMPLETE_TOPIC = 'track-analysis-complete'
 
     # Paths
-    ANALYSIS_RESULTS_PATH = os.getenv('ANALYSIS_RESULTS_PATH', '/analysis-results')
+    ANALYSIS_RESULTS_PATH = os.getenv('ANALYSIS_RESULTS_PATH', '/Users/okravch/my/sm/analysis-results')
 
     # Analysis settings
     ANALYSIS_VERSION = os.getenv('ANALYSIS_VERSION', '1.0')

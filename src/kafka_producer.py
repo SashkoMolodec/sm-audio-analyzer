@@ -31,7 +31,16 @@ class AnalysisCompleteProducer:
             'errorMessage': error_message
         }
 
-        self.producer.send(self.config.ANALYSIS_COMPLETE_TOPIC, value=message)
+        # Spring Kafka потребує __TypeId__ header для десеріалізації
+        headers = [
+            ('__TypeId__', b'track_analysis_complete')
+        ]
+
+        self.producer.send(
+            self.config.ANALYSIS_COMPLETE_TOPIC,
+            value=message,
+            headers=headers
+        )
         self.producer.flush()
 
         logger.info(f"Sent completion message for trackId={track_id}, success={success}")

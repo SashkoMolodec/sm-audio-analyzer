@@ -27,7 +27,7 @@ class EssentiaAnalyzer:
 
         try:
             # Load audio
-            loader_mono = es.MonoLoader(filename=audio_path)
+            loader_mono = es.MonoLoader(filename=audio_path, sampleRate=44100)
             audio_mono = loader_mono()
 
             logger.debug(f"Audio loaded: {len(audio_mono)} samples")
@@ -69,6 +69,7 @@ class EssentiaAnalyzer:
         # Danceability
         try:
             danceability_result = es.Danceability()(audio)
+            # Danceability може повернути tuple або float
             danceability = danceability_result if not isinstance(danceability_result, tuple) else danceability_result[0]
             features['danceability'] = self._to_string(danceability, 4)
         except Exception as e:
@@ -85,7 +86,19 @@ class EssentiaAnalyzer:
         # Onset rate
         try:
             onset_detection = es.OnsetRate()
-            onset_rate = onset_detection(audio)
+            onset_result = onset_detection(audio)
+
+            # --- FIX START: OnsetRate завжди повертає (onsetRate, onsetTimes) ---
+            if isinstance(onset_result, tuple) or isinstance(onset_result, list):
+                onset_rate = onset_result[0]
+            else:
+                onset_rate = onset_result
+
+            # Переконуємось що це скаляр, а не масив
+            if isinstance(onset_rate, np.ndarray):
+                onset_rate = float(onset_rate.item()) if onset_rate.size == 1 else float(np.mean(onset_rate))
+            # --- FIX END ---
+
             features['onset_rate'] = self._to_string(onset_rate, 4)
         except Exception as e:
             logger.warning(f"Onset rate extraction failed: {e}")
@@ -104,16 +117,30 @@ class EssentiaAnalyzer:
         centroid_extractor = es.Centroid()
         rolloff_extractor = es.RollOff()
 
+        # --- FIX START: Додано SpectralPeaks ---
+        # Dissonance потребує частот і амплітуд піків, а не просто спектру
+        peak_extractor = es.SpectralPeaks(orderBy="magnitude",
+                                        magnitudeThreshold=0.00001,
+                                        minFrequency=20,
+                                        maxFrequency=20000,
+                                        maxPeaks=100)
+        dissonance_extractor = es.Dissonance()
+        # --- FIX END ---
+
         frame_size = 2048
         hop_size = 512
 
         mfcc_frames = []
         centroids = []
         rolloffs = []
+        dissonances = []
 
         # Process audio in frames
         for i in range(0, len(audio) - frame_size, hop_size):
             frame = audio[i:i + frame_size]
+            if len(frame) < frame_size:
+                break
+
             spec = spectrum(w(frame))
 
             # MFCC
@@ -135,7 +162,18 @@ class EssentiaAnalyzer:
             except:
                 pass
 
-        # MFCC statistics (mean and variance for each coefficient)
+            # --- FIX START: Рахуємо Dissonance правильно ---
+            try:
+                # Беремо піки зі спектру
+                frequencies, magnitudes = peak_extractor(spec)
+                # Рахуємо дисонанс на основі піків
+                dis = dissonance_extractor(frequencies, magnitudes)
+                dissonances.append(dis)
+            except:
+                pass
+            # --- FIX END ---
+
+        # MFCC statistics
         if mfcc_frames:
             mfcc_array = np.array(mfcc_frames)
             for i in range(13):
@@ -148,19 +186,12 @@ class EssentiaAnalyzer:
                 features[f'mfcc_{coeff_num}_mean'] = None
                 features[f'mfcc_{coeff_num}_var'] = None
 
-        # Spectral features (averages)
+        # Spectral features
         features['spectral_centroid'] = self._to_string(np.mean(centroids), 2) if centroids else None
         features['spectral_rolloff'] = self._to_string(np.mean(rolloffs), 2) if rolloffs else None
 
-        # Dissonance
-        try:
-            dissonance_extractor = es.Dissonance()
-            first_frame_spec = spectrum(w(audio[:frame_size]))
-            dissonance = dissonance_extractor(first_frame_spec, first_frame_spec)
-            features['dissonance'] = self._to_string(dissonance, 6)
-        except Exception as e:
-            logger.warning(f"Dissonance extraction failed: {e}")
-            features['dissonance'] = None
+        # --- FIX: Додаємо дисонанс у результат ---
+        features['dissonance'] = self._to_string(np.mean(dissonances), 6) if dissonances else None
 
         return features
 

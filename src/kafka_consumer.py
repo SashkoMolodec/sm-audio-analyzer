@@ -20,7 +20,11 @@ class AnalysisTaskConsumer:
             group_id=config.KAFKA_CONSUMER_GROUP,
             value_deserializer=lambda m: json.loads(m.decode('utf-8')),
             auto_offset_reset='earliest',
-            enable_auto_commit=True
+            enable_auto_commit=True,
+            # Збільшуємо таймаути для довгих аналізів (до 5 хвилин)
+            session_timeout_ms=300000,  # 5 minutes
+            heartbeat_interval_ms=60000,  # 1 minute
+            max_poll_interval_ms=600000  # 10 minutes
         )
 
         logger.info(f"Kafka consumer initialized for topic: {config.ANALYZE_TRACK_TOPIC}")
